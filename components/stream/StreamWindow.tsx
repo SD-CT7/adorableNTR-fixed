@@ -10,12 +10,17 @@ import {
   StatusBar,
   Alert,
   ActivityIndicator,
+  LayoutChangeEvent,
 } from 'react-native';
 import { EventRegister } from 'react-native-event-listeners';
 import RNFS from 'react-native-fs';
 import { FFmpegKit } from 'ffmpeg-kit-react-native';
 import { requireNativeComponent } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
+
+// 表示サイズの「比率」(基準値)。実際のサイズは画面に収まるよう自動で拡大縮小されます。
+const TOP_SCREEN_SIZE = { width: 800, height: 240 };
+const BOTTOM_SCREEN_SIZE = { width: 320, height: 240 };
 
 interface JpegVideoViewProps {
   frame: string | null;
@@ -68,6 +73,8 @@ interface StreamWindowState {
   isLandscape: boolean;
   isExporting: boolean;
   exportProgress: number;
+  areaWidth: number;
+  areaHeight: number;
 }
 
 class StreamWindow extends Component<StreamWindowProps, StreamWindowState> {
@@ -97,6 +104,8 @@ class StreamWindow extends Component<StreamWindowProps, StreamWindowState> {
       isLandscape: Dimensions.get('window').width > Dimensions.get('window').height,
       isExporting: false,
       exportProgress: 0,
+      areaWidth: Dimensions.get('window').width,
+      areaHeight: Dimensions.get('window').height,
     };
     this.frameReadyListener = EventRegister.addEventListener('frameReady', this.renderFrame);
     BackHandler.addEventListener('hardwareBackPress', this.handleBackPress);
@@ -120,6 +129,25 @@ class StreamWindow extends Component<StreamWindowProps, StreamWindowState> {
     if (this.fpsInterval) clearInterval(this.fpsInterval);
     if (this.state.recording) this.stopRecording();
   }
+
+  handleAreaLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width !== this.state.areaWidth || height !== this.state.areaHeight) {
+      this.setState({ areaWidth: width, areaHeight: height });
+    }
+  };
+
+  // 基準サイズ(全体で width x height)を、表示領域に収まる最大倍率に拡縮する
+  getScale = (baseWidth: number, baseHeight: number) => {
+    const { areaWidth, areaHeight } = this.state;
+    if (areaWidth <= 0 || areaHeight <= 0) return 1;
+    return Math.min(areaWidth / baseWidth, areaHeight / baseHeight);
+  };
+
+  scaled = (size: { width: number; height: number }, scale: number) => ({
+    width: Math.floor(size.width * scale),
+    height: Math.floor(size.height * scale),
+  });
 
   handleOrientationChange = () => {
     const isLandscape = Dimensions.get('window').width > Dimensions.get('window').height;
@@ -449,20 +477,35 @@ class StreamWindow extends Component<StreamWindowProps, StreamWindowState> {
     return (
       <View style={fullscreen ? styles.fullscreenContainer : styles.container}>
         <StatusBar hidden={fullscreen} />
-        {this.props.bothViewEnabled ? (
-          <View style={styles.splitContainer}>
-            <View style={styles.splitSection}>
-              <SingletonJpegVideoView style={[styles.video, { transform: videoTransform }]} frame={currentFrameTop} />
-              {this.props.showFps && <Text style={styles.fpsText}>Top FPS: {fpsTop}</Text>}
+        {this.props.bothViewEnabled ? (() => {
+          // 上画面と下画面を縦にくっつけ、全体が画面に収まる倍率を使う
+          const scale = this.getScale(
+            Math.max(TOP_SCREEN_SIZE.width, BOTTOM_SCREEN_SIZE.width),
+            TOP_SCREEN_SIZE.height + BOTTOM_SCREEN_SIZE.height,
+          );
+          const topSize = this.scaled(TOP_SCREEN_SIZE, scale);
+          const bottomSize = this.scaled(BOTTOM_SCREEN_SIZE, scale);
+          return (
+            <View style={styles.singleContainer} onLayout={this.handleAreaLayout}>
+              <View style={[styles.splitSection, topSize]}>
+                <SingletonJpegVideoView style={[topSize, { transform: videoTransform }]} frame={currentFrameTop} />
+                {this.props.showFps && <Text style={styles.fpsOverlay}>Top FPS: {fpsTop}</Text>}
+              </View>
+              <View style={[styles.splitSection, bottomSize]}>
+                <SingletonJpegVideoView style={[bottomSize, { transform: videoTransform }]} frame={currentFrameBottom} />
+                {this.props.showFps && <Text style={styles.fpsOverlay}>Bottom FPS: {fpsBottom}</Text>}
+              </View>
             </View>
-            <View style={styles.splitSection}>
-              <SingletonJpegVideoView style={[styles.video, { transform: videoTransform }]} frame={currentFrameBottom} />
-              {this.props.showFps && <Text style={styles.fpsText}>Bottom FPS: {fpsBottom}</Text>}
+          );
+        })() : (() => {
+          const base = this.props.isTop ? TOP_SCREEN_SIZE : BOTTOM_SCREEN_SIZE;
+          const size = this.scaled(base, this.getScale(base.width, base.height));
+          return (
+            <View style={styles.singleContainer} onLayout={this.handleAreaLayout}>
+              <SingletonJpegVideoView style={[size, { transform: videoTransform }]} frame={currentFrame} />
             </View>
-          </View>
-        ) : (
-          <SingletonJpegVideoView style={[styles.video, { transform: videoTransform }]} frame={currentFrame} />
-        )}
+          );
+        })()}
         {!fullscreen && (
           <View style={styles.topBar}>
             <TouchableOpacity onPress={this.handleBackPress} style={styles.iconButton}>
@@ -511,8 +554,9 @@ const styles = StyleSheet.create({
   recordButton: { padding: 5 },
   exportOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   exportProgressText: { marginTop: 10, fontSize: 18, color: '#FFF' },
-  splitContainer: { flex: 1 },
-  splitSection: { flex: 1, borderBottomWidth: 1, borderColor: '#333' },
+  singleContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  splitSection: { alignSelf: 'center' },
+  fpsOverlay: { position: 'absolute', top: 4, left: 8, fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
 });
 
 export default StreamWindow;
