@@ -24,7 +24,7 @@ import { requireNativeComponent } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 
 // 表示サイズの「比率」(基準値)。実際のサイズは画面に収まるよう自動で拡大縮小されます。
-const TOP_SCREEN_SIZE = { width: 800, height: 240 };
+const TOP_SCREEN_SIZE = { width: 400, height: 240 };
 const BOTTOM_SCREEN_SIZE = { width: 320, height: 240 };
 
 interface JpegVideoViewProps {
