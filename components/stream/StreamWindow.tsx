@@ -14,7 +14,12 @@ import {
 } from 'react-native';
 import { EventRegister } from 'react-native-event-listeners';
 import RNFS from 'react-native-fs';
-import { FFmpegKit } from 'ffmpeg-kit-react-native';
+// ffmpeg-kit は配布終了(Maven Central から削除)のため、録画の書き出しは無効化しています。
+const FFmpegKit: any = {
+  executeAsync: () => {
+    throw new Error('FFmpegKit is not available');
+  },
+};
 import { requireNativeComponent } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 
@@ -220,6 +225,11 @@ class StreamWindow extends Component<StreamWindowProps, StreamWindowState> {
   };
 
   startRecording = () => {
+    Alert.alert('録画は利用できません', 'ffmpeg-kit が配布終了のため、録画機能は現在無効です。');
+    return;
+  };
+
+  startRecordingDisabled = () => {
     if (this.props.bothViewEnabled) {
       this.setState({ recording: true, framesTop: [], framesBottom: [] });
     } else {
